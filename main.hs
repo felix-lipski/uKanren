@@ -1,46 +1,63 @@
 import Data.List
+import Data.Maybe
 
--- s/c = substitution with a counter
-
-
-data Term a = Val a | Var Int deriving (Show, Eq)
+data Term a = Var Int | Atom a | Pair (Term a) (Term a) deriving (Eq, Show)
 
 type Subst a = [(Int, Term a)]
-
-data SubstC a = SubstC Int (Subst a)
+type SC a = (Int, (Subst a))
+type Goal a = SC a -> [SC a]
 
 walk :: Term a -> Subst a -> Term a
-walk (Val val) _ = Val val
+walk (Atom val) _ = Atom val
 walk (Var i) subst =
      case lookup i subst of 
        Just term -> walk term $ flip filter subst $ (i /=) . fst
        Nothing -> Var i
+walk term _ = term
 
 -- TODO: check for circularity
 extSubst :: Int -> Term a -> Subst a -> Subst a
 extSubst i term = (:) $ (,) i term
 
-data Tree a = Leaf (Term a) | Node (Term a, Term a) deriving (Show, Eq)
+unify :: Eq a => Term a -> Term a -> Subst a -> [Subst a]
+unify (Atom a) (Atom b) s = if a == b then [s] else []
+unify (Var i) term      s = [extSubst i term s]
+unify term (Var i)      s = unify (Var i) term s
+unify (Pair l1 r1) (Pair l2 r2) s1 = do
+    s2 <- unify (walk l1 s1) (walk l2 s1) s1
+    unify (walk r1 s2) (walk r2 s2) s2
+unify _ _ _ = []
 
-unify :: Eq a => Tree a -> Tree a -> Subst a -> Maybe (Subst a)
-unify (Leaf a) (Leaf b) s =
-    case (a, b) of
-      (Val a, Val b) -> if a == b then Just s else Nothing
-      (Var i, term) -> Just $ extSubst i term s
-      (a, b) -> unify (Leaf b) (Leaf a) s
-unify (Node (l1, r1)) (Node (l2, r2)) s = do
-    s2 <- unify (Leaf $ walk l1 s) (Leaf $ walk l2 s) s
-    unify (Leaf $ walk l1 s2) (Leaf $ walk l2 s2) s2
-unify _ _ _ = Nothing
+eq :: Eq a => Term a -> Term a -> Goal a
+eq a b (c, s) = map ((,) c)  $ unify (walk a s) (walk b s) s
 
--- eq :: Eq a => Tree a -> Tree a -> 
+callFresh :: (Term a -> Goal a) -> Goal a
+callFresh f (c, s) = (f (Var c)) ((c+1), s)
 
+disj :: Goal a -> Goal a -> Goal a
+disj g1 g2 = \(c, s) -> g1 (c, s) ++ g2 (c, s)
+
+conj :: Goal a -> Goal a -> Goal a
+conj g1 g2 = \cs -> g1 cs >>= g2
 
 main = do
-    print $ walk (Var 0) [(2, Val "cat"), (1, Var 2), (0, Var 1)]
-    print $ extSubst 2 (Val "cat") [(1, Var 2), (0, Var 1)]
-    print $ unify (Leaf (Var 0)) (Leaf (Val 3)) []
-    print $ unify (Node (Var 0, Var 3)) (Leaf (Val 3)) []
-    print $ unify (Node (Var 3, Var 0)) (Node (Val "lkj", Val "hjk")) []
-    print $ unify (Node (Val "lkj", Val "hjk")) (Node (Var 0, Var 3)) []
+    print $ walk (Var 0) [(2, Atom "cat"), (1, Var 2), (0, Var 1)]
+    print $ extSubst 2 (Atom "cat") [(1, Var 2), (0, Var 1)]
+    print $ unify (Var 0) (Atom "a") []
+    print $ unify (Pair (Var 0) (Var 3)) (Atom 3) []
+    print $ unify (Pair (Var 3) (Var 0)) (Pair (Atom "lkj") (Atom "hjk")) []
+    print $ unify (Pair (Atom "lkj") (Atom "hjk")) (Pair (Var 0) (Var 3)) []
+    print $ unify (Pair (Pair (Atom "3") (Atom "2")) (Atom "0"))
+                  (Pair (Pair (Var 0) (Var 2)) (Var 3)) []
+    print $ eq (Pair (Pair (Atom "a") (Var 0)) (Var 1))
+               (Pair (Pair (Var 0) (Var 1)) (Var 2)) (0, [])
+    print $ callFresh (\x -> eq x (Atom "cat")) (0, [])
+    print $ disj 
+        (callFresh (\x -> eq x (Atom "cat")))
+        (callFresh (\x -> eq x (Atom "dog")))
+        (0, [])
+    print $ conj 
+        (callFresh (\x -> eq x (Atom "cat")))
+        (callFresh (\x -> eq x (Atom "dog")))
+        (0, [])
 
