@@ -38,7 +38,7 @@ disj :: Goal a -> Goal a -> Goal a
 disj g1 g2 = \(c, s) -> g1 (c, s) ++ g2 (c, s)
 
 conj :: Goal a -> Goal a -> Goal a
-conj g1 g2 = \cs -> g1 cs >>= g2
+conj g1 g2 cs = g1 cs >>= g2
 
 main = do
     print $ walk (Var 0) [(2, Atom "cat"), (1, Var 2), (0, Var 1)]
@@ -52,12 +52,14 @@ main = do
     print $ eq (Pair (Pair (Atom "a") (Var 0)) (Var 1))
                (Pair (Pair (Var 0) (Var 1)) (Var 2)) (0, [])
     print $ callFresh (\x -> eq x (Atom "cat")) (0, [])
+
     print $ disj 
         (callFresh (\x -> eq x (Atom "cat")))
-        (callFresh (\x -> eq x (Atom "dog")))
+        (callFresh (\y -> eq y (Atom "dog")))
         (0, [])
+
     print $ conj 
         (callFresh (\x -> eq x (Atom "cat")))
-        (callFresh (\x -> eq x (Atom "dog")))
+        (callFresh (\y -> eq y (Atom "dog")))
         (0, [])
 
